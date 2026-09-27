@@ -1,0 +1,35 @@
+diff --git a/recipe/bld-base.bat b/recipe/bld-base.bat
+index e2ebeef..9080575 100644
+--- a/recipe/bld-base.bat
++++ b/recipe/bld-base.bat
+@@ -27,6 +27,8 @@ cmake .. -G "Ninja" ^
+     -DVTK_PYTHON_VERSION:STRING="%PYTHON_MAJOR_VERSION%" ^
+     -DPython3_FIND_STRATEGY=LOCATION ^
+     -DPython3_ROOT_DIR="%PREFIX%" ^
++    -DPython3_EXECUTABLE="%PYTHON%" ^
++    -DPython3_FIND_ABI="ANY;ANY;ANY;ON" ^
+     -DVTK_BUILD_PYI_FILES:BOOL=OFF ^
+     -DVTK_HAS_FEENABLEEXCEPT:BOOL=OFF ^
+     -DVTK_SMP_ENABLE_TBB:BOOL=ON ^
+diff --git a/recipe/recipe.yaml b/recipe/recipe.yaml
+index ee923db..2c12c19 100644
+--- a/recipe/recipe.yaml
++++ b/recipe/recipe.yaml
+@@ -291,6 +291,17 @@ outputs:
+       - script:
+           # uncomment once we fix test_vtk.py, see https://github.com/conda-forge/vtk-feedstock/issues/383#issuecomment-2890722669
+           # - python test_vtk.py
++          # Free-threaded (cp314t) builds: FindPython (called by VTK's CMake config) only accepts
++          # free-threaded interpreters when the 4th Python3_FIND_ABI field is ON; otherwise it falls
++          # back to any system Python. cmake-package-check takes no CMake arguments, but CMake reads
++          # CMAKE_TOOLCHAIN_FILE from the environment.
++          - if: unix
++            then:
++              - echo 'set(Python3_FIND_ABI "ANY;ANY;ANY;ON" CACHE STRING "")' > free-threaded.cmake
++              - export CMAKE_TOOLCHAIN_FILE="$PWD/free-threaded.cmake"
++            else:
++              - echo set(Python3_FIND_ABI "ANY;ANY;ANY;ON" CACHE STRING "") > free-threaded.cmake
++              - set "CMAKE_TOOLCHAIN_FILE=%CD%\free-threaded.cmake"
+           - cmake-package-check VTK
+         requirements:
+           run:
