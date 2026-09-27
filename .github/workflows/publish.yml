@@ -1,0 +1,49 @@
+name: publish
+
+# Upload the packages of an already finished `build` run to prefix.dev, without rebuilding.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "ID of a successful `build` workflow run"
+        required: true
+
+env:
+  CHANNEL: matthiasneuner/edelweiss
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check the build run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r name conclusion < <(gh run view "${{ inputs.run_id }}" -R "$GITHUB_REPOSITORY" \
+            --json workflowName,conclusion --jq '"\(.workflowName) \(.conclusion)"')
+          if [ "$name" != build ] || [ "$conclusion" != success ]; then
+            echo "::error::Run ${{ inputs.run_id }} is '$name' with conclusion '$conclusion'; need a successful 'build' run."
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          pattern: packages-*
+          path: packages
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      - name: Upload to prefix.dev
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+        run: |
+          pixi global install rattler-build
+          find packages -name '*.conda' | sort
+          find packages -name '*.conda' -print0 | xargs -0 rattler-build upload prefix --skip-existing --channel "$CHANNEL"

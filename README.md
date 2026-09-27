@@ -23,6 +23,13 @@ Use flexible channel priority (the default); the solve fails under `--strict-cha
 ## Build and publish
 
 Every push builds all platforms and keeps the packages as workflow artifacts.
-Publishing is manual: run the `build` workflow with `upload` ticked (needs the `PREFIX_API_KEY` repository secret).
+Publishing is manual and needs the `PREFIX_API_KEY` repository secret. Either upload the artifacts of a finished,
+successful build run (no rebuild):
+
+```console
+gh workflow run publish -R matthiasneuner/edelweiss-conda-channel -f run_id=<build run ID>
+```
+
+or run the `build` workflow with `upload` ticked.
 
 Retire a package here once conda-forge ships it (e.g. a cp314t vtk, autodiff with Eigen 5 support).
