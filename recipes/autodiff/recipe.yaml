@@ -13,14 +13,16 @@ build:
   number: 2
   # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
   # Windows, so each platform needs its own package.
+  # _cmake_build, not build: autodiff ships a Bazel BUILD file, which collides with build/ on the
+  # case-insensitive macOS and Windows filesystems.
   script:
     - if: win
       then:
-        - cmake -S . -B build -G Ninja -DAUTODIFF_BUILD_TESTS=OFF -DAUTODIFF_BUILD_PYTHON=OFF -DAUTODIFF_BUILD_EXAMPLES=OFF -DAUTODIFF_BUILD_DOCS=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
-        - cmake --install build
+        - cmake -S . -B _cmake_build -G Ninja -DAUTODIFF_BUILD_TESTS=OFF -DAUTODIFF_BUILD_PYTHON=OFF -DAUTODIFF_BUILD_EXAMPLES=OFF -DAUTODIFF_BUILD_DOCS=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - cmake --install _cmake_build
       else:
-        - cmake -S . -B build -G Ninja -DAUTODIFF_BUILD_TESTS=OFF -DAUTODIFF_BUILD_PYTHON=OFF -DAUTODIFF_BUILD_EXAMPLES=OFF -DAUTODIFF_BUILD_DOCS=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
-        - cmake --install build
+        - cmake -S . -B _cmake_build -G Ninja -DAUTODIFF_BUILD_TESTS=OFF -DAUTODIFF_BUILD_PYTHON=OFF -DAUTODIFF_BUILD_EXAMPLES=OFF -DAUTODIFF_BUILD_DOCS=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
+        - cmake --install _cmake_build
 requirements:
   build:
     - cmake

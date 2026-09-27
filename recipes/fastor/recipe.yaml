@@ -7,18 +7,24 @@ package:
 source:
   git: https://github.com/romeric/Fastor.git
   rev: ${{ rev }}
+  patches:
+    # Apple Silicon (arm64) build fix from BOKU-CMP-MEC-MAT/Fastor@5a3d6920 (branch arm64/apple-silicon-master),
+    # README changes dropped. Guards x86-only cpuid asm and fixes the scalar-ABI path arm64 uses.
+    - apple-silicon-boku-5a3d6920.patch
 build:
-  number: 1
+  number: 2
   # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
   # Windows, so each platform needs its own package.
+  # _cmake_build, not build: autodiff ships a Bazel BUILD file, which collides with build/ on the
+  # case-insensitive macOS and Windows filesystems.
   script:
     - if: win
       then:
-        - cmake -S . -B build -G Ninja -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
-        - cmake --install build
+        - cmake -S . -B _cmake_build -G Ninja -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - cmake --install _cmake_build
       else:
-        - cmake -S . -B build -G Ninja -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
-        - cmake --install build
+        - cmake -S . -B _cmake_build -G Ninja -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
+        - cmake --install _cmake_build
 requirements:
   build:
     - cmake

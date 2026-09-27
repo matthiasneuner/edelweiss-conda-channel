@@ -1,0 +1,182 @@
+diff --git a/Fastor/backend/matmul/matmul_specialisations_kernels.h b/Fastor/backend/matmul/matmul_specialisations_kernels.h
+index fb916f4..fae442d 100644
+--- a/Fastor/backend/matmul/matmul_specialisations_kernels.h
++++ b/Fastor/backend/matmul/matmul_specialisations_kernels.h
+@@ -85,7 +85,7 @@ void _matmul(const T * FASTOR_RESTRICT a, const T * FASTOR_RESTRICT b, T * FASTO
+ }
+ #else
+ template<typename T, size_t M, size_t K, size_t N,
+-         typename std::enable_if<M!=K && M==N && M==2,bool>::type = 0>
++         typename std::enable_if<M!=K && M==N && M==2 && (is_same_v_<T,float> || is_same_v_<T,double>),bool>::type = 0>
+ void _matmul(const T * FASTOR_RESTRICT a, const T * FASTOR_RESTRICT b, T * FASTOR_RESTRICT out) {
+     internal::_matmul_base<T,M,K,N>(a,b,out);
+ }
+diff --git a/Fastor/config/cpuid.h b/Fastor/config/cpuid.h
+index 498883f..0215976 100644
+--- a/Fastor/config/cpuid.h
++++ b/Fastor/config/cpuid.h
+@@ -42,12 +42,17 @@ class CPUID {
+   explicit CPUID(unsigned i) {
+ #ifdef _WIN32
+     __cpuid((int *)regs, (int)i);
+-
+-#else
++#elif defined(__x86_64__) || defined(__i386__)
+     asm volatile
+       ("cpuid" : "=a" (regs[0]), "=b" (regs[1]), "=c" (regs[2]), "=d" (regs[3])
+        : "a" (i), "c" (0));
+     // ECX is set to zero for CPUID function 4
++#else
++    // ARM or other architectures - set dummy values
++    regs[0] = 0;
++    regs[1] = 0;
++    regs[2] = 0;
++    regs[3] = 0;
+ #endif
+   }
+ 
+diff --git a/Fastor/simd_vector/simd_vector_common.h b/Fastor/simd_vector/simd_vector_common.h
+index 63096bd..9d6e0d4 100644
+--- a/Fastor/simd_vector/simd_vector_common.h
++++ b/Fastor/simd_vector/simd_vector_common.h
+@@ -248,12 +248,18 @@ FASTOR_INLINE void vector_setter(SIMDVector<T,ABI> &vec, const T *data, int idx,
+             data[idx+general_stride],data[idx]);
+ }
+ 
+-// // 16 word scalar
+-// template<typename T, int ABI,
+-//          typename std::enable_if<sizeof(T)==16 && internal::get_simd_vector_size<SIMDVector<T,ABI>>::bitsize==64,bool>::type=0>
+-// FASTOR_INLINE void vector_setter(SIMDVector<T,ABI> &vec, const T *data, int idx, int general_stride) {
+-//     vec.set(data[idx]);
+-// }
++// 16 word scalar (for complex types)
++template<typename T, typename ABI>
++FASTOR_INLINE typename std::enable_if<sizeof(T)==16 && std::is_same<ABI,simd_abi::scalar>::value,void>::type
++vector_setter(SIMDVector<T,ABI> &vec, const T *data, int idx, int general_stride) {
++    vec.set(data[idx]);
++}
++// 16 word scalar array version (for complex types)
++template<typename T, typename ABI>
++FASTOR_INLINE typename std::enable_if<sizeof(T)==16 && std::is_same<ABI,simd_abi::scalar>::value,void>::type
++vector_setter(SIMDVector<T,ABI> &vec, const T *data, const std::array<int,1> &a) {
++    vec.set(data[a[0]]);
++}
+ // 16 word scalar/SSE
+ template<typename T, typename ABI,
+          typename std::enable_if<sizeof(T)==16 && internal::get_simd_vector_size<SIMDVector<T,ABI>>::bitsize==128,bool>::type=0>
+diff --git a/Fastor/simd_vector/simd_vector_complex_scalar.h b/Fastor/simd_vector/simd_vector_complex_scalar.h
+index c6fcc99..3b02d66 100644
+--- a/Fastor/simd_vector/simd_vector_complex_scalar.h
++++ b/Fastor/simd_vector/simd_vector_complex_scalar.h
+@@ -254,7 +254,7 @@ operator-(U a, const SIMDVector<std::complex<T>,simd_abi::scalar> &b) {
+ template <typename T>
+ FASTOR_INLINE SIMDVector<std::complex<T>,simd_abi::scalar>
+ operator-(const SIMDVector<std::complex<T>,simd_abi::scalar> &b) {
+-    return SIMDVector<std::complex<T>,simd_abi::scalar>(0,0) - b;
++    return SIMDVector<std::complex<T>,simd_abi::scalar>(T(0), T(0)) - b;
+ }
+ 
+ template <typename T>
+diff --git a/Fastor/simd_vector/simd_vector_scalar.h b/Fastor/simd_vector/simd_vector_scalar.h
+index d386107..2a98832 100644
+--- a/Fastor/simd_vector/simd_vector_scalar.h
++++ b/Fastor/simd_vector/simd_vector_scalar.h
+@@ -2,6 +2,7 @@
+ #define SIMD_VECTOR_T_SCALAR_H
+ 
+ #include "Fastor/simd_vector/simd_vector_base.h"
++#include <type_traits>
+ 
+ namespace Fastor {
+ 
+@@ -10,6 +11,7 @@ struct SIMDVector<T, simd_abi::scalar> {
+     using value_type = T;
+     using scalar_value_type = T;
+     using abi_type = simd_abi::scalar;
++    using storage_type = std::remove_const_t<T>;
+     static constexpr FASTOR_INDEX Size = 1;
+     static constexpr FASTOR_INLINE FASTOR_INDEX size() {return 1;}
+ 
+@@ -23,10 +25,10 @@ struct SIMDVector<T, simd_abi::scalar> {
+     }
+ 
+     FASTOR_INLINE void load(const T *data, bool Aligned=true)  { value   = *data; unused(Aligned); }
+-    FASTOR_INLINE void store(T *data, bool Aligned=true) const { data[0] = value; unused(Aligned); }
++    FASTOR_INLINE void store(std::remove_const_t<T> *data, bool Aligned=true) const { data[0] = value; unused(Aligned); }
+ 
+     FASTOR_INLINE void aligned_load(const T *data)  { value   = *data; }
+-    FASTOR_INLINE void aligned_store(T *data) const { data[0] = value; }
++    FASTOR_INLINE void aligned_store(std::remove_const_t<T> *data) const { data[0] = value; }
+ 
+     FASTOR_INLINE void mask_load(const scalar_value_type *a, uint8_t mask, bool ) {
+         if (mask != 0x0) value = *a;
+@@ -95,7 +97,7 @@ struct SIMDVector<T, simd_abi::scalar> {
+         return value*other.value;
+     }
+ 
+-    T value;
++    storage_type value;
+ };
+ 
+ template <typename T>
+diff --git a/Fastor/util/timeit.h b/Fastor/util/timeit.h
+index 3fae970..e8c28cd 100644
+--- a/Fastor/util/timeit.h
++++ b/Fastor/util/timeit.h
+@@ -103,6 +103,7 @@ inline uint64_t rdtsc_end() {
+ //  Linux/GCC
+ #else
+ inline uint64_t rdtsc() {
++#if defined(__x86_64__) || defined(__i386__)
+     unsigned int lo, hi;
+     // This does not clobber the register so rdtsc overwrites
+     // the register, see
+@@ -123,6 +124,11 @@ inline uint64_t rdtsc() {
+                      );
+ #endif
+     return ((uint64_t)hi << 32) | lo;
++#else
++    // ARM or other architectures - use system clock
++    auto now = std::chrono::high_resolution_clock::now();
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
++#endif
+ }
+ 
+ #ifndef FASTOR_SIMPLE_RDTSC
+@@ -134,6 +140,7 @@ inline uint64_t rdtsc() {
+ // multiple times within a loop
+ // https://intel.ly/3dXFfQN
+ inline uint64_t rdtsc_begin() {
++#if defined(__x86_64__) || defined(__i386__)
+     unsigned int lo, hi;
+     __asm__ __volatile__ ("CPUID\n\t"
+                          "RDTSC\n\t"
+@@ -142,9 +149,15 @@ inline uint64_t rdtsc_begin() {
+                          "%rax", "%rbx", "%rcx", "%rdx" // clobber memory
+                          );
+     return ((uint64_t)hi << 32) | lo;
++#else
++    // ARM or other architectures - use system clock
++    auto now = std::chrono::high_resolution_clock::now();
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
++#endif
+ }
+ // and then a call to cpuid immediately after rdtsc
+ inline uint64_t rdtsc_end() {
++#if defined(__x86_64__) || defined(__i386__)
+     unsigned int lo, hi;
+     __asm__ __volatile__("RDTSCP\n\t"
+                          "mov %%edx, %0\n\t"
+@@ -153,6 +166,11 @@ inline uint64_t rdtsc_end() {
+                         "%rax", "%rbx", "%rcx", "%rdx" // clobber memory
+                         );
+     return ((uint64_t)hi << 32) | lo;
++#else
++    // ARM or other architectures - use system clock
++    auto now = std::chrono::high_resolution_clock::now();
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
++#endif
+ }
+ #else
+ inline uint64_t rdtsc_begin() { return rdtsc();}
+
