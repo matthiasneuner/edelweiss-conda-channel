@@ -6,7 +6,7 @@ everything else comes from conda-forge:
 
 | Package | Why it is here |
 |---|---|
-| `vtk`, `vtk-base`, `vtk-io-ffmpeg` | conda-forge's vtk-feedstock builds no free-threaded (cp314t) Python variant. Built unchanged from the feedstock recipe (pinned commit in `build.yml`) with a derived cp314t variant (`scripts/make_cp314t_variant.py`). |
+| `vtk`, `vtk-base`, `vtk-io-ffmpeg` | conda-forge's vtk-feedstock builds no free-threaded (cp314t) Python variant. Built from the feedstock recipe (pinned commit in `build.yml`) with a derived cp314t variant (`scripts/make_cp314t_variant.py`); `recipes/vtk/*.patch` adds `python-freethreading` to one recipe test, which otherwise finds a system Python. |
 | `autodiff` 1.1.2 | conda-forge only has 0.5.13; patched with upstream autodiff#397 for Eigen 5 support. |
 | `fastor`, `amgcl` | Not packaged on conda-forge. |
 
