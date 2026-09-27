@@ -135,9 +135,9 @@ jobs:
           channels = ["$channel", "conda-forge"]
           platforms = ["${{ matrix.subdir }}"]
 
-          # conda-forge's qt6-main (a vtk dependency) needs libpq, which requires macOS >= 13.3.
+          # conda-forge's qt6-main (a vtk dependency) needs moltenvk, which requires macOS >= 14.0.
           [system-requirements]
-          macos = "13.3"
+          macos = "14.0"
 
           [dependencies]
           python-freethreading = "3.14.*"
