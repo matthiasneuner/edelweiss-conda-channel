@@ -9,7 +9,13 @@ on:
         default: false
   push:
     branches: [main]
+    paths-ignore:
+      - "README.md"
+      - ".github/workflows/publish.yml"
   pull_request:
+    paths-ignore:
+      - "README.md"
+      - ".github/workflows/publish.yml"
 
 env:
   # conda-forge/vtk-feedstock commit the vtk packages are built from; bump deliberately.
