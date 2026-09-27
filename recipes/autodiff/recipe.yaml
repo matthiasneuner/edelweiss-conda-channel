@@ -1,0 +1,41 @@
+context:
+  version: "1.1.2"
+package:
+  name: autodiff
+  version: ${{ version }}
+source:
+  git: https://github.com/autodiff/autodiff.git
+  tag: v${{ version }}
+  patches:
+    # Eigen 5 support, upstream autodiff PR #397 (open as of 2026-09-27); drop once released.
+    - eigen5-singlerange-pr397.patch
+build:
+  number: 2
+  # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
+  # Windows, so each platform needs its own package.
+  script:
+    - if: win
+      then:
+        - cmake -S . -B build -G Ninja -DAUTODIFF_BUILD_TESTS=OFF -DAUTODIFF_BUILD_PYTHON=OFF -DAUTODIFF_BUILD_EXAMPLES=OFF -DAUTODIFF_BUILD_DOCS=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - cmake --install build
+      else:
+        - cmake -S . -B build -G Ninja -DAUTODIFF_BUILD_TESTS=OFF -DAUTODIFF_BUILD_PYTHON=OFF -DAUTODIFF_BUILD_EXAMPLES=OFF -DAUTODIFF_BUILD_DOCS=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
+        - cmake --install build
+requirements:
+  build:
+    - cmake
+    - ninja
+    - ${{ compiler('cxx') }}
+  host:
+    - eigen
+  run:
+    - eigen
+tests:
+  - package_contents:
+      include:
+        - autodiff/forward/dual.hpp
+about:
+  homepage: https://autodiff.github.io
+  license: MIT
+  license_file: LICENSE
+  summary: Automatic differentiation made easier for C++

@@ -1,0 +1,35 @@
+context:
+  version: "0.6.4.post6"
+  rev: a3002342a2c4fd78b80ca69214bd021d1c73d5a7
+package:
+  name: fastor
+  version: ${{ version }}
+source:
+  git: https://github.com/romeric/Fastor.git
+  rev: ${{ rev }}
+build:
+  number: 1
+  # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
+  # Windows, so each platform needs its own package.
+  script:
+    - if: win
+      then:
+        - cmake -S . -B build -G Ninja -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - cmake --install build
+      else:
+        - cmake -S . -B build -G Ninja -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
+        - cmake --install build
+requirements:
+  build:
+    - cmake
+    - ninja
+    - ${{ compiler('cxx') }}
+tests:
+  - package_contents:
+      include:
+        - Fastor/Fastor.h
+about:
+  homepage: https://github.com/romeric/Fastor
+  license: MIT
+  license_file: LICENSE
+  summary: Header-only SIMD tensor algebra library (C++)

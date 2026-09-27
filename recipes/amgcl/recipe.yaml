@@ -1,0 +1,38 @@
+context:
+  version: "1.4.7"
+package:
+  name: amgcl
+  version: ${{ version }}
+source:
+  git: https://github.com/ddemidov/amgcl.git
+  tag: ${{ version }}
+build:
+  number: 1
+  # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
+  # Windows, so each platform needs its own package.
+  script:
+    - if: win
+      then:
+        - cmake -S . -B build -G Ninja -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - cmake --install build
+      else:
+        - cmake -S . -B build -G Ninja -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
+        - cmake --install build
+requirements:
+  build:
+    - cmake
+    - ninja
+    - ${{ compiler('cxx') }}
+  host:
+    - libboost-devel
+  run:
+    - libboost-devel
+tests:
+  - package_contents:
+      include:
+        - amgcl/amg.hpp
+about:
+  homepage: https://github.com/ddemidov/amgcl
+  license: MIT
+  license_file: LICENSE.md
+  summary: Header-only C++ library for solving large sparse linear systems with algebraic multigrid
