@@ -79,6 +79,31 @@ jobs:
           rattler-build build --recipe vtk-feedstock/recipe -m variant_cp314t.yaml -c conda-forge \
             --output-dir output --log-style plain
 
+      # A package that links a library from outside its conda environment works on the build machine
+      # and nowhere else: vtk-base once linked a system libhdf5.so.320 while declaring hdf5 1.14.6.
+      # Install the fresh build into a clean environment and require every shared-library dependency
+      # to resolve inside it (or to the OS itself), then exercise the Exodus/HDF5 reader EdelweissFE uses.
+      - name: Check linkage in a clean environment
+        run: |
+          pixi global install rattler-index
+          rattler-index fs output
+          pixi init --channel "file://$PWD/output" --channel conda-forge --platform ${{ matrix.subdir }} check-env
+          cd check-env
+          pixi add "python-freethreading=3.14" vtk
+          pixi run python -c "import sys, vtk; from vtkmodules.vtkIOIOSS import vtkIOSSReader; from vtkmodules.vtkIOExodus import vtkExodusIIReader; from vtkmodules.vtkIOHDF import vtkHDFReader; print(sys.version, 'vtk', vtk.vtkVersion.GetVTKVersion()); assert not sys._is_gil_enabled()"
+          prefix=$(pixi run python -c "import sys; print(sys.prefix)")
+          case "${{ matrix.subdir }}" in
+            linux-*)
+              bad=$(find "$prefix/lib" -name 'libvtk*.so*' -type f -exec ldd {} \; | grep -E 'not found|=> /(usr/)?lib' \
+                | grep -vE 'lib(c|m|dl|rt|pthread|resolv|util|gcc_s|stdc\+\+|GL|GLX|OpenGL|EGL|X11|xcb|Xau|Xdmcp)\.so' | sed -E 's/ \(0x[0-9a-f]+\)//' | sort -u || true) ;;
+            osx-*)
+              bad=$(find "$prefix/lib" -name 'libvtk*.dylib' -type f -exec otool -L {} \; | grep -E '^\s+/' \
+                | grep -vE '^\s+(/usr/lib/|/System/Library/)' | sed -E 's/ \(0x[0-9a-f]+\)//' | sort -u || true) ;;
+            *)
+              bad="" ;;  # win-64: covered by the import test above (Windows does not fall back to system copies)
+          esac
+          if [ -n "$bad" ]; then echo "::error::vtk links libraries from outside the environment:"; echo "$bad"; exit 1; fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.subdir }}
