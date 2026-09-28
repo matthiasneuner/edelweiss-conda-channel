@@ -7,7 +7,9 @@ source:
   git: https://github.com/ddemidov/amgcl.git
   tag: ${{ version }}
 build:
-  number: 1
+  number: 2
+  # Header-only: do not pin users to the Boost version this package happened to be built against
+  # (libboost-devel's run_exports would), or it conflicts with packages pinning another Boost (vtk).
   # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
   # Windows, so each platform needs its own package.
   # _cmake_build, not build: autodiff ships a Bazel BUILD file, which collides with build/ on the
@@ -29,6 +31,18 @@ requirements:
     - libboost-devel
   run:
     - libboost-devel
+  ignore_run_exports:
+    from_package:
+      - libboost-devel
+    # Header-only: the compiler is only needed for CMake's configure step, so its runtime
+    # libraries must not become (pinned) dependencies of the package.
+    by_name:
+      - libstdcxx
+      - libgcc
+      - libcxx
+      - vc14_runtime
+      - vc
+      - ucrt
 tests:
   - package_contents:
       include:

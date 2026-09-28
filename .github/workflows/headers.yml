@@ -1,0 +1,60 @@
+name: headers
+
+# The header-only packages (fastor, autodiff, amgcl): minutes per platform, so kept apart from the
+# hours-long vtk build in build.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload built packages to prefix.dev"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["recipes/fastor/**", "recipes/autodiff/**", "recipes/amgcl/**", ".github/workflows/headers.yml"]
+  pull_request:
+    paths: ["recipes/fastor/**", "recipes/autodiff/**", "recipes/amgcl/**", ".github/workflows/headers.yml"]
+
+env:
+  CHANNEL: matthiasneuner/edelweiss
+
+jobs:
+  build:
+    name: ${{ matrix.subdir }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { subdir: linux-64, os: ubuntu-24.04 }
+          - { subdir: osx-arm64, os: macos-15 }
+          - { subdir: osx-64, os: macos-15-intel }
+          - { subdir: win-64, os: windows-2022 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      - name: Build
+        run: |
+          pixi global install rattler-build
+          for recipe in fastor autodiff amgcl; do
+            rattler-build build --recipe recipes/$recipe -c conda-forge --output-dir output
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: headers-${{ matrix.subdir }}
+          path: output/${{ matrix.subdir }}/*.conda
+
+      - name: Upload to prefix.dev
+        if: github.event_name == 'workflow_dispatch' && inputs.upload
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+        run: |
+          rattler-build upload prefix --skip-existing --channel "$CHANNEL" output/${{ matrix.subdir }}/*.conda

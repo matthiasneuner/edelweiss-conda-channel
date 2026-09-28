@@ -1,5 +1,7 @@
 name: build
 
+# vtk (hours per platform). The header-only packages are built by headers.yml.
+
 on:
   workflow_dispatch:
     inputs:
@@ -12,10 +14,18 @@ on:
     paths-ignore:
       - "README.md"
       - ".github/workflows/publish.yml"
+      - ".github/workflows/headers.yml"
+      - "recipes/fastor/**"
+      - "recipes/autodiff/**"
+      - "recipes/amgcl/**"
   pull_request:
     paths-ignore:
       - "README.md"
       - ".github/workflows/publish.yml"
+      - ".github/workflows/headers.yml"
+      - "recipes/fastor/**"
+      - "recipes/autodiff/**"
+      - "recipes/amgcl/**"
 
 env:
   # conda-forge/vtk-feedstock commit the vtk packages are built from; bump deliberately.
@@ -56,12 +66,6 @@ jobs:
         run: |
           pixi global install rattler-build
           python -m pip install pyyaml
-
-      - name: Build header-only packages
-        run: |
-          for recipe in fastor autodiff amgcl; do
-            rattler-build build --recipe recipes/$recipe -c conda-forge --output-dir output
-          done
 
       - name: Fetch vtk-feedstock
         run: |

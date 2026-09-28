@@ -12,7 +12,7 @@ source:
     # README changes dropped. Guards x86-only cpuid asm and fixes the scalar-ABI path arm64 uses.
     - apple-silicon-boku-5a3d6920.patch
 build:
-  number: 2
+  number: 3
   # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
   # Windows, so each platform needs its own package.
   # _cmake_build, not build: autodiff ships a Bazel BUILD file, which collides with build/ on the
@@ -30,6 +30,16 @@ requirements:
     - cmake
     - ninja
     - ${{ compiler('cxx') }}
+  ignore_run_exports:
+    # Header-only: the compiler is only needed for CMake's configure step, so its runtime
+    # libraries must not become (pinned) dependencies of the package.
+    by_name:
+      - libstdcxx
+      - libgcc
+      - libcxx
+      - vc14_runtime
+      - vc
+      - ucrt
 tests:
   - package_contents:
       include:

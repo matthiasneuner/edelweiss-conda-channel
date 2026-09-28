@@ -10,7 +10,7 @@ source:
     # Eigen 5 support, upstream autodiff PR #397 (open as of 2026-09-27); drop once released.
     - eigen5-singlerange-pr397.patch
 build:
-  number: 2
+  number: 3
   # Header-only, but not noarch: conda puts headers in include/ on Unix and Library/include on
   # Windows, so each platform needs its own package.
   # _cmake_build, not build: autodiff ships a Bazel BUILD file, which collides with build/ on the
@@ -32,6 +32,16 @@ requirements:
     - eigen
   run:
     - eigen
+  ignore_run_exports:
+    # Header-only: the compiler is only needed for CMake's configure step, so its runtime
+    # libraries must not become (pinned) dependencies of the package.
+    by_name:
+      - libstdcxx
+      - libgcc
+      - libcxx
+      - vc14_runtime
+      - vc
+      - ucrt
 tests:
   - package_contents:
       include:
