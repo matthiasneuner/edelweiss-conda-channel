@@ -1,0 +1,133 @@
+name: stack
+
+# marmot and edelweissfe, built from the revisions pinned in their recipes. edelweissfe is built against the
+# marmot of the same run (rattler-build uses its output directory as a channel), and pins it exactly.
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload built packages to prefix.dev"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["recipes/marmot/**", "recipes/edelweissfe/**", ".github/workflows/stack.yml"]
+  pull_request:
+    paths: ["recipes/marmot/**", "recipes/edelweissfe/**", ".github/workflows/stack.yml"]
+
+env:
+  CHANNEL: matthiasneuner/edelweiss
+
+jobs:
+  build:
+    name: ${{ matrix.subdir }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { subdir: linux-64, os: ubuntu-24.04 }
+          - { subdir: osx-arm64, os: macos-15 }
+          - { subdir: osx-64, os: macos-15-intel }
+          - { subdir: win-64, os: windows-2022 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      # Both recipes run their package tests (marmot: a find_package consumer; edelweissfe: every extension
+      # imports, GIL off, one test case with and one without Marmot).
+      - name: Build
+        run: |
+          pixi global install rattler-build
+          channels=(-c "https://repo.prefix.dev/$CHANNEL" -c conda-forge)
+          rattler-build build --recipe recipes/marmot "${channels[@]}" --output-dir output --log-style plain
+          rattler-build build --recipe recipes/edelweissfe -m recipes/edelweissfe/variants.yaml "${channels[@]}" \
+            --output-dir output --log-style plain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-stack-${{ matrix.subdir }}
+          path: output/${{ matrix.subdir }}/*.conda
+
+  # What a user does: create an environment from the channels, without a compiler or a source checkout.
+  check:
+    name: check ${{ matrix.subdir }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { subdir: linux-64, os: ubuntu-24.04 }
+          - { subdir: osx-arm64, os: macos-15 }
+          - { subdir: osx-64, os: macos-15-intel }
+          - { subdir: win-64, os: windows-2022 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-stack-${{ matrix.subdir }}
+          path: output/${{ matrix.subdir }}
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      - name: Install into a clean environment
+        run: |
+          pixi global install rattler-index
+          rattler-index fs output
+          # A file:// URL that is also valid on Windows (Git Bash's $PWD is /d/a/..., not D:/a/...).
+          py=$(command -v python || command -v python3)
+          channel=$("$py" -c "import pathlib; print(pathlib.Path('output').resolve().as_uri())")
+          mkdir check-env
+          cat > check-env/pixi.toml <<TOML
+          [workspace]
+          name = "check-env"
+          channels = ["$channel", "https://repo.prefix.dev/$CHANNEL", "conda-forge"]
+          platforms = ["${{ matrix.subdir }}"]
+
+          # conda-forge's qt6-main (a vtk dependency) needs moltenvk, which requires macOS >= 14.0.
+          [system-requirements]
+          macos = "14.0"
+
+          [dependencies]
+          edelweissfe = "*"
+          TOML
+          cd check-env
+          pixi run python -c "import sys, edelweissfe.elements.marmotelement.element, edelweissfe.linsolve.klu.klu; print(sys.version); assert not sys._is_gil_enabled()"
+          pixi run run_tests_edelweissfe --help > /dev/null
+
+  upload:
+    name: upload ${{ matrix.subdir }}
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && inputs.upload
+    strategy:
+      matrix:
+        subdir: [linux-64, osx-arm64, osx-64, win-64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-stack-${{ matrix.subdir }}
+          path: output
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      - name: Upload to prefix.dev
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+        run: |
+          pixi global install rattler-build
+          find output -name '*.conda' -print0 | xargs -0 rattler-build upload prefix --skip-existing --channel "$CHANNEL"

@@ -9,10 +9,25 @@ everything else comes from conda-forge:
 | `vtk`, `vtk-base`, `vtk-io-ffmpeg` | conda-forge's vtk-feedstock builds no free-threaded (cp314t) Python variant. Built from the feedstock recipe (pinned commit in `build.yml`) with a derived cp314t variant (`scripts/make_cp314t_variant.py`); `recipes/vtk/*.patch` makes CMake's FindPython accept the free-threaded interpreter (Windows build, and the CMake package test), which it otherwise skips in favour of any system Python. |
 | `autodiff` 1.1.2 | conda-forge only has 0.5.13; patched with upstream autodiff#397 for Eigen 5 support. |
 | `fastor`, `amgcl` | Not packaged on conda-forge. |
+| `marmot` | Marmot's public modules, portable (no `-march=native`). Pins its consumers to exactly this build (no stable C++ ABI). |
+| `edelweissfe` | EdelweissFE with all its Cython extensions, built against the `marmot` of the same run; cp314t only. |
 
 Platforms: linux-64, osx-arm64, osx-64 (macOS >= 14, required by conda-forge's Qt), win-64.
 
 ## Use
+
+Ready-to-run EdelweissFE with Marmot:
+
+```console
+mamba create -n edelweissfe -c https://repo.prefix.dev/matthiasneuner/edelweiss -c conda-forge edelweissfe
+```
+
+To develop (compile Marmot or EdelweissFE yourself), use a **separate** environment from EdelweissFE's
+`edelweissfe-dev` meta-package instead, never one with the `marmot`/`edelweissfe` packages installed: installing a
+self-built Marmot over the packaged one overwrites files conda owns and leaves the packaged edelweissfe running against
+a library whose ABI it was not compiled for.
+
+Only the dependencies:
 
 ```console
 mamba create -n edelweissfe -c https://repo.prefix.dev/matthiasneuner/edelweiss -c conda-forge python-freethreading=3.14 vtk pyvista ...

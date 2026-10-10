@@ -1,0 +1,88 @@
+context:
+  # Development snapshots of next_v26.11 are versioned <release>.dev<commit date>, which conda orders before the
+  # release itself (26.11.0). Bump `rev` and `version` together.
+  version: "26.11.dev20261008"
+  rev: 099a99b30fcb4e138478c74fe4521c8ecbeed200
+package:
+  name: marmot
+  version: ${{ version }}
+source:
+  git: https://github.com/MAteRialMOdelingToolbox/Marmot.git
+  rev: ${{ rev }}
+  patches:
+    # Marmot fix/missing-vector-include (libc++ on macOS); drop once merged into the pinned revision.
+    - include-vector.patch
+build:
+  number: 0
+  # Only the modules in the public repository are built (the private ones are separate repositories, never part of
+  # a clone). Portable binaries: no -march=native (MARMOT_MARCH_NATIVE is off by default; stated here explicitly).
+  # The tests are not built: the package test below checks the installed library from a consumer's side.
+  # Windows: build in a short directory, as object paths under rattler-build's work directory exceed MAX_PATH
+  # (MSVC C1083 "Cannot open compiler generated file"). ninja -k 0: report every failing file in one run.
+  script:
+    - if: win
+      then:
+        - cmake -S . -B %TEMP%\mb -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMARMOT_MARCH_NATIVE=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - if errorlevel 1 exit 1
+        - cmake --build %TEMP%\mb --parallel %CPU_COUNT% -- -k 0
+        - if errorlevel 1 exit 1
+        - cmake --install %TEMP%\mb
+      else:
+        - cmake -S . -B _cmake_build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMARMOT_MARCH_NATIVE=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
+        - cmake --build _cmake_build --parallel $CPU_COUNT -- -k 0
+        - cmake --install _cmake_build
+requirements:
+  build:
+    - cmake
+    - ninja
+    - ${{ compiler('cxx') }}
+  host:
+    - eigen
+    - autodiff ==1.1.2
+    - fastor
+  run:
+    # Marmot's installed headers include Eigen, autodiff and Fastor, whose types are part of its C++ ABI: consumers
+    # must compile against exactly the versions libMarmot was built with.
+    - ${{ pin_compatible('eigen', upper_bound='x.x.x') }}
+    - autodiff ==1.1.2
+    - ${{ pin_compatible('fastor', upper_bound='x.x.x') }}
+  run_exports:
+    # C++ has no stable ABI across Marmot revisions: anything compiled against this build (EdelweissFE's Cython
+    # extensions) must run with exactly this build.
+    - ${{ pin_subpackage('marmot', exact=True) }}
+tests:
+  - package_contents:
+      include:
+        - Marmot/MarmotMaterialHypoElastic.h
+        - Marmot/MarmotElementFactory.h
+      lib:
+        - Marmot
+  # Build and run Marmot's consumer test against the installed package: find_package(Marmot), the exported API and
+  # the factories (it creates a CPS4 element with a LINEARELASTIC material by name).
+  - files:
+      source:
+        - tests/consumer/TestExportedAPI.cpp
+      recipe:
+        - consumer/CMakeLists.txt
+    requirements:
+      build:
+        - cmake
+        - ninja
+        - ${{ compiler('cxx') }}
+    script:
+      - if: win
+        then:
+          - cmake -S consumer -B _consumer -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+          - if errorlevel 1 exit 1
+          - cmake --build _consumer
+          - if errorlevel 1 exit 1
+          - _consumer\TestExportedAPI.exe
+        else:
+          - cmake -S consumer -B _consumer -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PREFIX
+          - cmake --build _consumer
+          - ./_consumer/TestExportedAPI
+about:
+  homepage: https://github.com/MAteRialMOdelingToolbox/Marmot
+  license: LGPL-2.1-or-later
+  license_file: LICENSE.md
+  summary: MAteRialMOdellingToolbox - finite elements and constitutive models for quasi-brittle materials (C++)
