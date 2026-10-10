@@ -31,6 +31,8 @@ runner = shutil.which("run_tests_edelweissfe")
 assert runner, "run_tests_edelweissfe is not on PATH"
 # The runner's output is captured and printed here: on Windows, the build tool's log otherwise loses it.
 env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+# The installed launcher itself must start (on Windows a broken one exits 1 silently).
+subprocess.run([runner, "--help"], check=True, env=env)
 failed = []
 for directory in ["testfiles/edelweiss-only", "testfiles/marmot"]:
     result = subprocess.run(
