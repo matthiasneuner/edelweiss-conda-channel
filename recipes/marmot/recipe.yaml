@@ -9,22 +9,27 @@ package:
 source:
   git: https://github.com/MAteRialMOdelingToolbox/Marmot.git
   rev: ${{ rev }}
+  patches:
+    # Marmot fix/missing-vector-include (libc++ on macOS); drop once merged into the pinned revision.
+    - include-vector.patch
 build:
   number: 0
   # Only the modules in the public repository are built (the private ones are separate repositories, never part of
   # a clone). Portable binaries: no -march=native (MARMOT_MARCH_NATIVE is off by default; stated here explicitly).
   # The tests are not built: the package test below checks the installed library from a consumer's side.
+  # Windows: build in a short directory, as object paths under rattler-build's work directory exceed MAX_PATH
+  # (MSVC C1083 "Cannot open compiler generated file"). ninja -k 0: report every failing file in one run.
   script:
     - if: win
       then:
-        - cmake -S . -B _cmake_build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMARMOT_MARCH_NATIVE=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
+        - cmake -S . -B %TEMP%\mb -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMARMOT_MARCH_NATIVE=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_INSTALL_PREFIX=%LIBRARY_PREFIX% -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
         - if errorlevel 1 exit 1
-        - cmake --build _cmake_build --parallel %CPU_COUNT%
+        - cmake --build %TEMP%\mb --parallel %CPU_COUNT% -- -k 0
         - if errorlevel 1 exit 1
-        - cmake --install _cmake_build
+        - cmake --install %TEMP%\mb
       else:
         - cmake -S . -B _cmake_build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DMARMOT_MARCH_NATIVE=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX
-        - cmake --build _cmake_build --parallel $CPU_COUNT
+        - cmake --build _cmake_build --parallel $CPU_COUNT -- -k 0
         - cmake --install _cmake_build
 requirements:
   build:

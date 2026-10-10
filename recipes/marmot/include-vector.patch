@@ -1,0 +1,28 @@
+From 3d442ff5d64d17ffe485ab40c35712a4378fcc29 Mon Sep 17 00:00:00 2001
+From: Matthias Neuner <matthias.neuner@uibk.ac.at>
+Date: Sat, 10 Oct 2026 14:59:13 +0200
+Subject: [PATCH] fix(MathCore): include <vector> in
+ MarmotNumericalIntegration.cpp
+
+libc++ (macOS) does not provide std::vector transitively here.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ modules/core/MarmotMathCore/src/MarmotNumericalIntegration.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/modules/core/MarmotMathCore/src/MarmotNumericalIntegration.cpp b/modules/core/MarmotMathCore/src/MarmotNumericalIntegration.cpp
+index 1d0ec3f7..b6f9eb4d 100644
+--- a/modules/core/MarmotMathCore/src/MarmotNumericalIntegration.cpp
++++ b/modules/core/MarmotMathCore/src/MarmotNumericalIntegration.cpp
+@@ -1,6 +1,7 @@
+ #include "Marmot/MarmotNumericalIntegration.h"
+ #include <algorithm>
+ #include <stdexcept>
++#include <vector>
+ 
+ namespace Marmot {
+   namespace NumericalAlgorithms::Integration {
+-- 
+2.55.0
+
