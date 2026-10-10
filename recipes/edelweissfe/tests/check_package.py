@@ -1,6 +1,7 @@
 """Package test of edelweissfe: every expected extension imports, the GIL stays off, and two test cases pass."""
 
 import importlib
+import os
 import shutil
 import subprocess
 import sys
@@ -28,5 +29,15 @@ assert not sys._is_gil_enabled(), "importing the extensions re-enabled the GIL"
 
 runner = shutil.which("run_tests_edelweissfe")
 assert runner, "run_tests_edelweissfe is not on PATH"
+# The runner's output is captured and printed here: on Windows, the build tool's log otherwise loses it.
+env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+failed = []
 for directory in ["testfiles/edelweiss-only", "testfiles/marmot"]:
-    subprocess.run([runner, directory], check=True)
+    result = subprocess.run(
+        [runner, directory], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env
+    )
+    print(result.stdout)
+    print(result.stderr, file=sys.stderr)
+    if result.returncode != 0:
+        failed.append(directory)
+assert not failed, f"test cases failed in {failed}"
