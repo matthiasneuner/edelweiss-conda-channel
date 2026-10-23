@@ -1,0 +1,157 @@
+name: hypre
+
+# hypre-openmp: minutes per platform, a compiled library, so kept apart from the header-only packages (headers.yml)
+# and the hours-long vtk build (build.yml). No Windows package (see the recipe).
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload built packages to prefix.dev"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["recipes/hypre-openmp/**", ".github/workflows/hypre.yml"]
+  pull_request:
+    paths: ["recipes/hypre-openmp/**", ".github/workflows/hypre.yml"]
+
+env:
+  CHANNEL: matthiasneuner/edelweiss
+
+jobs:
+  build:
+    name: ${{ matrix.subdir }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { subdir: linux-64, os: ubuntu-24.04 }
+          - { subdir: osx-arm64, os: macos-15 }
+          - { subdir: osx-64, os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      # The recipe's package tests check the OpenMP linkage, the build configuration in HYPRE_config.h, and build and
+      # run a C program that creates and destroys a BoomerAMG solver.
+      - name: Build
+        run: |
+          pixi global install rattler-build
+          rattler-build build --recipe recipes/hypre-openmp -c conda-forge --output-dir output --log-style plain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hypre-${{ matrix.subdir }}
+          path: output/${{ matrix.subdir }}/*.conda
+
+  # A package that links a library from outside its conda environment works on the build machine and nowhere else.
+  # Install the fresh build into a clean environment, without a compiler, and require every shared-library dependency
+  # of libHYPRE to resolve inside it (or to the OS itself); then check that it refuses to install next to
+  # conda-forge's hypre.
+  check:
+    name: check ${{ matrix.subdir }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { subdir: linux-64, os: ubuntu-24.04 }
+          - { subdir: osx-arm64, os: macos-15 }
+          - { subdir: osx-64, os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hypre-${{ matrix.subdir }}
+          path: output/${{ matrix.subdir }}
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      - name: Check linkage in a clean environment
+        run: |
+          pixi global install rattler-index
+          rattler-index fs output
+          channel=$(python3 -c "import pathlib; print(pathlib.Path('output').resolve().as_uri())")
+          echo "local channel: $channel"
+          mkdir check-env
+          cat > check-env/pixi.toml <<TOML
+          [workspace]
+          name = "check-env"
+          channels = ["$channel", "conda-forge"]
+          platforms = ["${{ matrix.subdir }}"]
+
+          [dependencies]
+          hypre-openmp = "*"
+          TOML
+          cd check-env
+          pixi install
+          prefix="$PWD/.pixi/envs/default"
+          case "${{ matrix.subdir }}" in
+            linux-*)
+              ldd "$prefix"/lib/libHYPRE.so
+              bad=$(ldd "$prefix"/lib/libHYPRE.so | grep -E 'not found|=> /(usr/)?lib' \
+                | grep -vE 'lib(c|m|dl|rt|pthread|gcc_s)\.so' | sed -E 's/ \(0x[0-9a-f]+\)//' | sort -u || true) ;;
+            osx-*)
+              otool -L "$prefix"/lib/libHYPRE.dylib
+              bad=$(otool -L "$prefix"/lib/libHYPRE.dylib | grep -E '^\s+/' \
+                | grep -vE '^\s+(/usr/lib/|/System/Library/)' | sed -E 's/ \(.*\)//' | sort -u || true) ;;
+          esac
+          if [ -n "$bad" ]; then echo "::error::libHYPRE links libraries from outside the environment:"; echo "$bad"; exit 1; fi
+
+      - name: Check the conflict with conda-forge's hypre
+        run: |
+          channel=$(python3 -c "import pathlib; print(pathlib.Path('output').resolve().as_uri())")
+          mkdir conflict-env
+          cat > conflict-env/pixi.toml <<TOML
+          [workspace]
+          name = "conflict-env"
+          channels = ["$channel", "conda-forge"]
+          platforms = ["${{ matrix.subdir }}"]
+
+          [dependencies]
+          hypre-openmp = "*"
+          hypre = "*"
+          TOML
+          cd conflict-env
+          if pixi install > solve.log 2>&1; then
+            echo "::error::hypre-openmp and conda-forge's hypre were solved into one environment"; exit 1
+          fi
+          cat solve.log
+          grep -q hypre solve.log
+
+  upload:
+    name: upload ${{ matrix.subdir }}
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && inputs.upload
+    strategy:
+      matrix:
+        subdir: [linux-64, osx-arm64, osx-64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hypre-${{ matrix.subdir }}
+          path: output
+
+      - uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          run-install: false
+
+      - name: Upload to prefix.dev
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+        run: |
+          pixi global install rattler-build
+          find output -name '*.conda' -print0 | xargs -0 rattler-build upload prefix --skip-existing --channel "$CHANNEL"

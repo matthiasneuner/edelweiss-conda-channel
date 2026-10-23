@@ -1,0 +1,83 @@
+context:
+  version: "3.2.0"
+package:
+  # Not `hypre`: conda-forge's hypre is built with MPI and without OpenMP, and installs the same libHYPRE and
+  # headers. A distinct name plus the run constraint below keeps the two from being mixed silently.
+  name: hypre-openmp
+  version: ${{ version }}
+source:
+  git: https://github.com/hypre-space/hypre.git
+  tag: v${{ version }}
+build:
+  number: 0
+  # Windows: hypre exports no symbols from a DLL (its own CI builds it static only) and MSVC's OpenMP 2.0 lacks the
+  # max reduction hypre uses, so there is no Windows package.
+  skip:
+    - win
+  # Threaded (OpenMP), sequential (no MPI), shared, Release, 32-bit HYPRE_Int and HYPRE_BigInt (hypre's defaults,
+  # stated explicitly), hypre's internal BLAS/LAPACK (default). Option names: hypre 3.2.0's src/CMakeLists.txt.
+  # _cmake_build, not build: hypre's top level has a build/ directory.
+  script:
+    - cmake -S src -B _cmake_build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DHYPRE_ENABLE_OPENMP=ON -DHYPRE_ENABLE_MPI=OFF -DHYPRE_ENABLE_BIGINT=OFF -DHYPRE_ENABLE_MIXEDINT=OFF -DHYPRE_BUILD_TESTS=OFF -DHYPRE_BUILD_EXAMPLES=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_PREFIX_PATH=$PREFIX -DCMAKE_INSTALL_LIBDIR=lib
+    - cmake --build _cmake_build --parallel $CPU_COUNT
+    - cmake --install _cmake_build
+requirements:
+  build:
+    - cmake
+    - ninja
+    - ${{ compiler('c') }}
+  host:
+    # OpenMP runtime. Linux: GCC's -fopenmp links libgomp.so.1 (GNU OpenMP ABI, GOMP_* entry points); which library
+    # serves it at run time is chosen by _openmp_mutex (EdelweissFE's environment: kmp_llvm, i.e. LLVM's libomp,
+    # which implements the GOMP_* ABI too, so the whole process shares one runtime). macOS: clang uses libomp.
+    - if: linux
+      then: libgomp
+    - if: osx
+      then: llvm-openmp
+  run:
+    - if: linux
+      then: libgomp
+  run_constraints:
+    # Never together with conda-forge's MPI hypre (same files, different ABI).
+    - hypre <0a0
+  run_exports:
+    # hypre's SOVERSION is major * 100 + minor (libHYPRE.so.302): its ABI may change with every minor release.
+    - ${{ pin_subpackage('hypre-openmp', upper_bound='x.x') }}
+tests:
+  # (a) the library and the headers a BoomerAMG consumer needs.
+  - package_contents:
+      lib:
+        - HYPRE
+      include:
+        - HYPRE.h
+        - HYPRE_config.h
+        - HYPRE_utilities.h
+        - HYPRE_parcsr_ls.h
+        - HYPRE_IJ_mv.h
+  # (b) libHYPRE links the OpenMP runtime (Linux: libgomp.so.1 and GOMP_* calls); (c) HYPRE_config.h records a
+  # sequential, OpenMP, 32-bit-integer build; (d) a C program that creates and destroys a BoomerAMG solver compiles,
+  # links and runs.
+  - files:
+      recipe:
+        - tests/check_package.sh
+        - tests/boomeramg_create_destroy.c
+    requirements:
+      build:
+        - ${{ compiler('c') }}
+    script:
+      - bash tests/check_package.sh
+about:
+  homepage: https://github.com/hypre-space/hypre
+  # Dual-licensed, at the user's option (hypre's COPYRIGHT); both are compatible with EdelweissFE's LGPL-2.1.
+  # The bundled BLAS/LAPACK subsets (src/blas, src/lapack) are under the University of Tennessee's BSD-style licence.
+  license: MIT OR Apache-2.0
+  license_file:
+    - LICENSE-MIT
+    - LICENSE-APACHE
+    - COPYRIGHT
+    - NOTICE
+  summary: hypre (BoomerAMG and other scalable preconditioners), threaded with OpenMP, without MPI
+  description: |
+    hypre built with OpenMP threading and without MPI (HYPRE_SEQUENTIAL), as a shared library with 32-bit HYPRE_Int
+    and HYPRE_BigInt. For the threaded BoomerAMG backend of EdelweissFE's blockamg linear solver. Conflicts with
+    conda-forge's hypre, which is built with MPI and without OpenMP.

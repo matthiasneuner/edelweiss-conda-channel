@@ -1,6 +1,6 @@
 name: build
 
-# vtk (hours per platform). The header-only packages are built by headers.yml.
+# vtk (hours per platform). The header-only packages are built by headers.yml, hypre-openmp by hypre.yml.
 
 on:
   workflow_dispatch:
@@ -18,6 +18,8 @@ on:
       - "recipes/fastor/**"
       - "recipes/autodiff/**"
       - "recipes/amgcl/**"
+      - ".github/workflows/hypre.yml"
+      - "recipes/hypre-openmp/**"
   pull_request:
     paths-ignore:
       - "README.md"
@@ -26,6 +28,8 @@ on:
       - "recipes/fastor/**"
       - "recipes/autodiff/**"
       - "recipes/amgcl/**"
+      - ".github/workflows/hypre.yml"
+      - "recipes/hypre-openmp/**"
 
 env:
   # conda-forge/vtk-feedstock commit the vtk packages are built from; bump deliberately.

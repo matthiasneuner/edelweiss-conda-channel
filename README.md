@@ -9,6 +9,7 @@ everything else comes from conda-forge:
 | `vtk`, `vtk-base`, `vtk-io-ffmpeg` | conda-forge's vtk-feedstock builds no free-threaded (cp314t) Python variant. Built from the feedstock recipe (pinned commit in `build.yml`) with a derived cp314t variant (`scripts/make_cp314t_variant.py`); `recipes/vtk/*.patch` makes CMake's FindPython accept the free-threaded interpreter (Windows build, and the CMake package test), which it otherwise skips in favour of any system Python. |
 | `autodiff` 1.1.2 | conda-forge only has 0.5.13; patched with upstream autodiff#397 for Eigen 5 support. |
 | `fastor`, `amgcl` | Not packaged on conda-forge. |
+| `hypre-openmp` | hypre threaded with OpenMP, without MPI (conda-forge's `hypre` is MPI-only, without OpenMP), for EdelweissFE's threaded BoomerAMG backend. Conflicts with conda-forge's `hypre` (same files). No Windows package. |
 
 Platforms: linux-64, osx-arm64, osx-64 (macOS >= 14, required by conda-forge's Qt), win-64.
 
